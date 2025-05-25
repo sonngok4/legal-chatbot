@@ -1,10 +1,14 @@
-from flask import Flask, request, jsonify
-import json
+import os
 import re
+import sqlite3
+from datetime import datetime
+from functools import lru_cache
+
+import pandas as pd
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import os
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)  # Cho phép CORS để Flutter có thể gọi API
@@ -15,22 +19,24 @@ class LegalChatbot:
         self.vectorizer = TfidfVectorizer(
             ngram_range=(1, 2), max_features=1000, stop_words=None  # Unigram và bigram
         )
+        self.db_path = "legal_database.db"
         self.load_data()
         self.build_search_index()
 
+    def get_db_connection(self):
+        """Get database connection"""
+        return sqlite3.connect(self.db_path)
+
     def load_data(self):
-        """Load dữ liệu từ JSON file"""
-        try:
-            with open("violations.json", "r", encoding="utf-8") as f:
-                self.violations = json.load(f)
-            print(f"Đã load {len(self.violations)} vi phạm")
-        except FileNotFoundError:
-            print("Không tìm thấy file violations.json")
-            self.violations = []
+        """Load data from SQLite database"""
+        conn = self.get_db_connection()
+        self.violations = pd.read_sql_query("SELECT * FROM violations", conn)
+        self.legal_documents = pd.read_sql_query("SELECT * FROM legal_documents", conn)
+        conn.close()
 
         # Tạo corpus để tìm kiếm
         self.corpus = []
-        for violation in self.violations:
+        for _, violation in self.violations.iterrows():
             text = f"{violation['description']} {violation['keywords']} {violation['vehicle_type']} {violation['violation_type']}"
             self.corpus.append(text.lower())
 
@@ -130,7 +136,7 @@ class LegalChatbot:
 
         for idx in top_indices:
             if similarities[idx] > 0.05:  # Threshold thấp hơn
-                violation = self.violations[idx].copy()
+                violation = self.violations.iloc[idx].to_dict()
                 violation["confidence"] = float(similarities[idx])
 
                 # Bonus điểm nếu match vehicle type
@@ -211,6 +217,152 @@ class LegalChatbot:
             "entities": entities,
         }
 
+    @lru_cache(maxsize=100)
+    def cached_search(self, query):
+        return self.search_violations(query)
+
+    def learn_from_feedback(self, query, is_helpful):
+        """Log feedback để cải thiện"""
+        with open("feedback.log", "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now()}: {query} | Helpful: {is_helpful}\n")
+
+    # Add new methods for data management
+    def add_violation(self, violation_data):
+        """Add new violation"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+        INSERT INTO violations (
+            violation_type, description, vehicle_type, fine_amount,
+            additional_penalty, legal_reference, keywords, document_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                violation_data["violation_type"],
+                violation_data["description"],
+                violation_data["vehicle_type"],
+                violation_data["fine_amount"],
+                violation_data.get("additional_penalty", ""),
+                violation_data["legal_reference"],
+                violation_data["keywords"],
+                violation_data.get("document_id"),
+            ),
+        )
+
+        conn.commit()
+        conn.close()
+        self.load_data()  # Reload data
+        return cursor.lastrowid
+
+    def update_violation(self, violation_id, violation_data):
+        """Update existing violation"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        values = []
+        for key, value in violation_data.items():
+            if key in [
+                "violation_type",
+                "description",
+                "vehicle_type",
+                "fine_amount",
+                "additional_penalty",
+                "legal_reference",
+                "keywords",
+                "document_id",
+            ]:
+                update_fields.append(f"{key} = ?")
+                values.append(value)
+
+        if update_fields:
+            query = f"UPDATE violations SET {', '.join(update_fields)} WHERE id = ?"
+            values.append(violation_id)
+            cursor.execute(query, values)
+            conn.commit()
+
+        conn.close()
+        self.load_data()  # Reload data
+        return cursor.rowcount > 0
+
+    def delete_violation(self, violation_id):
+        """Delete violation"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM violations WHERE id = ?", (violation_id,))
+        conn.commit()
+        conn.close()
+
+        self.load_data()  # Reload data
+        return cursor.rowcount > 0
+
+    def add_legal_document(self, document_data):
+        """Add new legal document"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+        INSERT INTO legal_documents (title, code, content, effective_date, status)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+            (
+                document_data["title"],
+                document_data["code"],
+                document_data["content"],
+                document_data["effective_date"],
+                document_data.get("status", "active"),
+            ),
+        )
+
+        conn.commit()
+        conn.close()
+        self.load_data()  # Reload data
+        return cursor.lastrowid
+
+    def update_legal_document(self, doc_id, document_data):
+        """Update existing legal document"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        update_fields = []
+        values = []
+        for key, value in document_data.items():
+            if key in ["title", "code", "content", "effective_date", "status"]:
+                update_fields.append(f"{key} = ?")
+                values.append(value)
+
+        if update_fields:
+            query = (
+                f"UPDATE legal_documents SET {', '.join(update_fields)} WHERE id = ?"
+            )
+            values.append(doc_id)
+            cursor.execute(query, values)
+            conn.commit()
+
+        conn.close()
+        self.load_data()  # Reload data
+        return cursor.rowcount > 0
+
+    def delete_legal_document(self, doc_id):
+        """Delete legal document"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        # First delete related violations
+        cursor.execute("DELETE FROM violations WHERE document_id = ?", (doc_id,))
+        # Then delete the document
+        cursor.execute("DELETE FROM legal_documents WHERE id = ?", (doc_id,))
+        conn.commit()
+        conn.close()
+
+        self.load_data()  # Reload data
+        return cursor.rowcount > 0
+
 
 # Khởi tạo chatbot
 print("Đang khởi tạo chatbot...")
@@ -280,6 +432,83 @@ def test():
         results[query] = chatbot.generate_response(query)
 
     return jsonify(results)
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify(
+        {
+            "status": "healthy",
+            "violations_loaded": len(chatbot.violations),
+            "timestamp": str(datetime.now()),
+        }
+    )
+
+
+@app.route("/violations", methods=["POST"])
+def add_violation():
+    """Add new violation"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    violation_id = chatbot.add_violation(data)
+    return jsonify({"id": violation_id, "message": "Violation added successfully"})
+
+
+@app.route("/violations/<int:violation_id>", methods=["PUT"])
+def update_violation(violation_id):
+    """Update violation"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    success = chatbot.update_violation(violation_id, data)
+    if success:
+        return jsonify({"message": "Violation updated successfully"})
+    return jsonify({"error": "Violation not found"}), 404
+
+
+@app.route("/violations/<int:violation_id>", methods=["DELETE"])
+def delete_violation(violation_id):
+    """Delete violation"""
+    success = chatbot.delete_violation(violation_id)
+    if success:
+        return jsonify({"message": "Violation deleted successfully"})
+    return jsonify({"error": "Violation not found"}), 404
+
+
+@app.route("/legal-documents", methods=["POST"])
+def add_legal_document():
+    """Add new legal document"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    doc_id = chatbot.add_legal_document(data)
+    return jsonify({"id": doc_id, "message": "Legal document added successfully"})
+
+
+@app.route("/legal-documents/<int:doc_id>", methods=["PUT"])
+def update_legal_document(doc_id):
+    """Update legal document"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    success = chatbot.update_legal_document(doc_id, data)
+    if success:
+        return jsonify({"message": "Legal document updated successfully"})
+    return jsonify({"error": "Legal document not found"}), 404
+
+
+@app.route("/legal-documents/<int:doc_id>", methods=["DELETE"])
+def delete_legal_document(doc_id):
+    """Delete legal document"""
+    success = chatbot.delete_legal_document(doc_id)
+    if success:
+        return jsonify({"message": "Legal document deleted successfully"})
+    return jsonify({"error": "Legal document not found"}), 404
 
 
 if __name__ == "__main__":
