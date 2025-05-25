@@ -1,0 +1,102 @@
+[
+    {
+        "id": 1,
+        "violation_type": "tốc độ",
+        "description": "Vượt quá tốc độ cho phép từ 05-10 km/h",
+        "vehicle_type": "xe máy",
+        "fine_amount": "400.000 - 600.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm a, Khoản 3, Điều 6, Nghị định 100/2019",
+        "keywords": "tốc độ xe máy 5 10 km/h vượt quá"
+    },
+    {
+        "id": 2,
+        "violation_type": "tốc độ",
+        "description": "Vượt quá tốc độ cho phép từ 10-20 km/h",
+        "vehicle_type": "xe máy",
+        "fine_amount": "800.000 - 1.000.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm b, Khoản 3, Điều 6, Nghị định 100/2019",
+        "keywords": "tốc độ xe máy 10 20 km/h vượt quá"
+    },
+    {
+        "id": 3,
+        "violation_type": "nồng độ cồn",
+        "description": "Nồng độ cồn từ 0,25-0,4 mg/l khí thở hoặc từ 0,5-0,8 g/l máu",
+        "vehicle_type": "xe máy",
+        "fine_amount": "2.000.000 - 3.000.000 VND",
+        "additional_penalty": "Tước giấy phép lái xe 10-12 tháng",
+        "legal_reference": "Điểm a, Khoản 4, Điều 6, Nghị định 100/2019",
+        "keywords": "nồng độ cồn xe máy rượu bia 0.25 0.4 0.5 0.8"
+    },
+    {
+        "id": 4,
+        "violation_type": "nồng độ cồn",
+        "description": "Nồng độ cồn từ 0,4-0,8 mg/l khí thở hoặc từ 0,8-1,6 g/l máu",
+        "vehicle_type": "xe máy",
+        "fine_amount": "4.000.000 - 5.000.000 VND",
+        "additional_penalty": "Tước giấy phép lái xe 16-18 tháng",
+        "legal_reference": "Điểm b, Khoản 4, Điều 6, Nghị định 100/2019",
+        "keywords": "nồng độ cồn xe máy rượu bia 0.4 0.8 1.6"
+    },
+    {
+        "id": 5,
+        "violation_type": "đèn đỏ",
+        "description": "Không chấp hành hiệu lệnh của đèn tín hiệu giao thông",
+        "vehicle_type": "xe máy",
+        "fine_amount": "800.000 - 1.000.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm c, Khoản 7, Điều 6, Nghị định 100/2019",
+        "keywords": "đèn đỏ xe máy vượt đèn tín hiệu giao thông"
+    },
+    {
+        "id": 6,
+        "violation_type": "mũ bảo hiểm",
+        "description": "Không đội mũ bảo hiểm khi điều khiển xe máy",
+        "vehicle_type": "xe máy",
+        "fine_amount": "200.000 - 300.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm a, Khoản 11, Điều 6, Nghị định 100/2019",
+        "keywords": "mũ bảo hiểm xe máy không đội"
+    },
+    {
+        "id": 7,
+        "violation_type": "tốc độ",
+        "description": "Vượt quá tốc độ cho phép từ 05-10 km/h",
+        "vehicle_type": "ô tô",
+        "fine_amount": "800.000 - 1.200.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm a, Khoản 3, Điều 5, Nghị định 100/2019",
+        "keywords": "tốc độ ô tô 5 10 km/h vượt quá xe hơi"
+    },
+    {
+        "id": 8,
+        "violation_type": "nồng độ cồn",
+        "description": "Nồng độ cồn từ 0,25-0,4 mg/l khí thở hoặc từ 0,5-0,8 g/l máu",
+        "vehicle_type": "ô tô",
+        "fine_amount": "6.000.000 - 8.000.000 VND",
+        "additional_penalty": "Tước giấy phép lái xe 10-12 tháng",
+        "legal_reference": "Điểm a, Khoản 4, Điều 5, Nghị định 100/2019",
+        "keywords": "nồng độ cồn ô tô rượu bia 0.25 0.4 0.5 0.8 xe hơi"
+    },
+    {
+        "id": 9,
+        "violation_type": "đèn đỏ",
+        "description": "Không chấp hành hiệu lệnh của đèn tín hiệu giao thông",
+        "vehicle_type": "ô tô",
+        "fine_amount": "4.000.000 - 6.000.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm c, Khoản 7, Điều 5, Nghị định 100/2019",
+        "keywords": "đèn đỏ ô tô vượt đèn tín hiệu giao thông xe hơi"
+    },
+    {
+        "id": 10,
+        "violation_type": "giấy tờ",
+        "description": "Không mang theo giấy phép lái xe khi điều khiển phương tiện",
+        "vehicle_type": "tất cả",
+        "fine_amount": "800.000 - 1.000.000 VND",
+        "additional_penalty": "",
+        "legal_reference": "Điểm a, Khoản 1, Điều 6, Nghị định 100/2019",
+        "keywords": "giấy phép lái xe bằng lái không mang theo"
+    }
+]
