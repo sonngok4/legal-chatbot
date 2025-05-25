@@ -10,35 +10,57 @@ from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from logging_config import setup_logging
+
 app = Flask(__name__)
 CORS(app)  # Cho phép CORS để Flutter có thể gọi API
+
+# Setup logging
+logger = setup_logging()
 
 
 class LegalChatbot:
     def __init__(self):
+        logger.info("Initializing LegalChatbot")
         self.vectorizer = TfidfVectorizer(
             ngram_range=(1, 2), max_features=1000, stop_words=None  # Unigram và bigram
         )
         self.db_path = "legal_database.db"
         self.load_data()
         self.build_search_index()
+        logger.info("LegalChatbot initialization completed")
 
     def get_db_connection(self):
         """Get database connection"""
-        return sqlite3.connect(self.db_path)
+        try:
+            conn = sqlite3.connect(self.db_path)
+            return conn
+        except sqlite3.Error as e:
+            logger.error(f"Database connection error: {str(e)}")
+            raise
 
     def load_data(self):
         """Load data from SQLite database"""
-        conn = self.get_db_connection()
-        self.violations = pd.read_sql_query("SELECT * FROM violations", conn)
-        self.legal_documents = pd.read_sql_query("SELECT * FROM legal_documents", conn)
-        conn.close()
+        try:
+            logger.info("Loading data from database")
+            conn = self.get_db_connection()
+            self.violations = pd.read_sql_query("SELECT * FROM violations", conn)
+            self.legal_documents = pd.read_sql_query(
+                "SELECT * FROM legal_documents", conn
+            )
+            conn.close()
+            logger.info(
+                f"Loaded {len(self.violations)} violations and {len(self.legal_documents)} legal documents"
+            )
 
-        # Tạo corpus để tìm kiếm
-        self.corpus = []
-        for _, violation in self.violations.iterrows():
-            text = f"{violation['description']} {violation['keywords']} {violation['vehicle_type']} {violation['violation_type']}"
-            self.corpus.append(text.lower())
+            # Tạo corpus để tìm kiếm
+            self.corpus = []
+            for _, violation in self.violations.iterrows():
+                text = f"{violation['description']} {violation['keywords']} {violation['vehicle_type']} {violation['violation_type']}"
+                self.corpus.append(text.lower())
+        except Exception as e:
+            logger.error(f"Error loading data: {str(e)}")
+            raise
 
     def build_search_index(self):
         """Xây dựng vector search index"""
@@ -163,59 +185,69 @@ class LegalChatbot:
 
     def generate_response(self, query):
         """Sinh câu trả lời"""
-        if not query.strip():
-            return {"answer": "Vui lòng nhập câu hỏi của bạn.", "confidence": 0.0}
+        try:
+            logger.info(f"Processing query: {query}")
+            if not query.strip():
+                logger.warning("Empty query received")
+                return {"answer": "Vui lòng nhập câu hỏi của bạn.", "confidence": 0.0}
 
-        violations = self.search_violations(query)
-        entities = self.extract_entities(query)
+            violations = self.search_violations(query)
+            entities = self.extract_entities(query)
 
-        if not violations:
-            suggestion = "Bạn có thể hỏi về:\n"
-            suggestion += (
-                "- Vi phạm tốc độ (VD: 'xe máy chạy 80km/h bị phạt bao nhiêu?')\n"
-            )
-            suggestion += (
-                "- Vi phạm nồng độ cồn (VD: 'uống rượu lái xe máy bị phạt gì?')\n"
-            )
-            suggestion += "- Vượt đèn đỏ (VD: 'ô tô vượt đèn đỏ phạt bao nhiêu?')\n"
-            suggestion += "- Không đội mũ bảo hiểm\n"
-            suggestion += "- Không mang giấy phép lái xe"
+            if not violations:
+                logger.info("No violations found for query")
+                suggestion = "Bạn có thể hỏi về:\n"
+                suggestion += (
+                    "- Vi phạm tốc độ (VD: 'xe máy chạy 80km/h bị phạt bao nhiêu?')\n"
+                )
+                suggestion += (
+                    "- Vi phạm nồng độ cồn (VD: 'uống rượu lái xe máy bị phạt gì?')\n"
+                )
+                suggestion += "- Vượt đèn đỏ (VD: 'ô tô vượt đèn đỏ phạt bao nhiêu?')\n"
+                suggestion += "- Không đội mũ bảo hiểm\n"
+                suggestion += "- Không mang giấy phép lái xe"
 
-            return {
-                "answer": f'Xin lỗi, tôi không tìm thấy thông tin phù hợp với câu hỏi "{query}".\n\n{suggestion}',
-                "confidence": 0.0,
-            }
+                return {
+                    "answer": f'Xin lỗi, tôi không tìm thấy thông tin phù hợp với câu hỏi "{query}".\n\n{suggestion}',
+                    "confidence": 0.0,
+                }
 
-        # Xây dựng câu trả lời
-        response = f'**Thông tin về câu hỏi: "{query}"**\n\n'
+            # Xây dựng câu trả lời
+            response = f'**Thông tin về câu hỏi: "{query}"**\n\n'
 
-        for i, violation in enumerate(violations, 1):
-            confidence_text = (
-                f" (độ chính xác: {violation['confidence']:.1%})"
-                if violation["confidence"] < 0.8
-                else ""
-            )
-
-            response += f"**{i}. {violation['description']}{confidence_text}**\n"
-            response += f"📋 **Áp dụng cho:** {violation['vehicle_type']}\n"
-            response += f"💰 **Mức phạt:** {violation['fine_amount']}\n"
-
-            if violation["additional_penalty"]:
-                response += (
-                    f"⚠️ **Hình phạt bổ sung:** {violation['additional_penalty']}\n"
+            for i, violation in enumerate(violations, 1):
+                confidence_text = (
+                    f" (độ chính xác: {violation['confidence']:.1%})"
+                    if violation["confidence"] < 0.8
+                    else ""
                 )
 
-            response += f"📖 **Căn cứ pháp lý:** {violation['legal_reference']}\n\n"
+                response += f"**{i}. {violation['description']}{confidence_text}**\n"
+                response += f"📋 **Áp dụng cho:** {violation['vehicle_type']}\n"
+                response += f"💰 **Mức phạt:** {violation['fine_amount']}\n"
 
-        response += "---\n"
-        response += "*💡 Lưu ý: Thông tin này chỉ mang tính chất tham khảo. Trong trường hợp cụ thể, vui lòng tham khảo ý kiến của cơ quan có thẩm quyền hoặc luật sư.*"
+                if violation["additional_penalty"]:
+                    response += (
+                        f"⚠️ **Hình phạt bổ sung:** {violation['additional_penalty']}\n"
+                    )
 
-        return {
-            "answer": response,
-            "confidence": violations[0]["confidence"] if violations else 0.0,
-            "violations_found": len(violations),
-            "entities": entities,
-        }
+                response += f"📖 **Căn cứ pháp lý:** {violation['legal_reference']}\n\n"
+
+            response += "---\n"
+            response += "*💡 Lưu ý: Thông tin này chỉ mang tính chất tham khảo. Trong trường hợp cụ thể, vui lòng tham khảo ý kiến của cơ quan có thẩm quyền hoặc luật sư.*"
+
+            return {
+                "answer": response,
+                "confidence": violations[0]["confidence"] if violations else 0.0,
+                "violations_found": len(violations),
+                "entities": entities,
+            }
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            return {
+                "answer": "Xin lỗi, đã có lỗi xảy ra khi xử lý câu hỏi của bạn.",
+                "confidence": 0.0,
+            }
 
     @lru_cache(maxsize=100)
     def cached_search(self, query):
@@ -229,76 +261,100 @@ class LegalChatbot:
     # Add new methods for data management
     def add_violation(self, violation_data):
         """Add new violation"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        try:
+            logger.info(f"Adding new violation: {violation_data['description']}")
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-        INSERT INTO violations (
-            violation_type, description, vehicle_type, fine_amount,
-            additional_penalty, legal_reference, keywords, document_id
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                violation_data["violation_type"],
-                violation_data["description"],
-                violation_data["vehicle_type"],
-                violation_data["fine_amount"],
-                violation_data.get("additional_penalty", ""),
-                violation_data["legal_reference"],
-                violation_data["keywords"],
-                violation_data.get("document_id"),
-            ),
-        )
+            cursor.execute(
+                """
+            INSERT INTO violations (
+                violation_type, description, vehicle_type, fine_amount,
+                additional_penalty, legal_reference, keywords, document_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    violation_data["violation_type"],
+                    violation_data["description"],
+                    violation_data["vehicle_type"],
+                    violation_data["fine_amount"],
+                    violation_data.get("additional_penalty", ""),
+                    violation_data["legal_reference"],
+                    violation_data["keywords"],
+                    violation_data.get("document_id"),
+                ),
+            )
 
-        conn.commit()
-        conn.close()
-        self.load_data()  # Reload data
-        return cursor.lastrowid
+            violation_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            self.load_data()
+            logger.info(f"Successfully added violation with ID: {violation_id}")
+            return violation_id
+        except Exception as e:
+            logger.error(f"Error adding violation: {str(e)}")
+            raise
 
     def update_violation(self, violation_id, violation_data):
         """Update existing violation"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        try:
+            logger.info(f"Updating violation ID: {violation_id}")
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
 
-        update_fields = []
-        values = []
-        for key, value in violation_data.items():
-            if key in [
-                "violation_type",
-                "description",
-                "vehicle_type",
-                "fine_amount",
-                "additional_penalty",
-                "legal_reference",
-                "keywords",
-                "document_id",
-            ]:
-                update_fields.append(f"{key} = ?")
-                values.append(value)
+            update_fields = []
+            values = []
+            for key, value in violation_data.items():
+                if key in [
+                    "violation_type",
+                    "description",
+                    "vehicle_type",
+                    "fine_amount",
+                    "additional_penalty",
+                    "legal_reference",
+                    "keywords",
+                    "document_id",
+                ]:
+                    update_fields.append(f"{key} = ?")
+                    values.append(value)
 
-        if update_fields:
-            query = f"UPDATE violations SET {', '.join(update_fields)} WHERE id = ?"
-            values.append(violation_id)
-            cursor.execute(query, values)
-            conn.commit()
+            if update_fields:
+                query = f"UPDATE violations SET {', '.join(update_fields)} WHERE id = ?"
+                values.append(violation_id)
+                cursor.execute(query, values)
+                conn.commit()
+                success = cursor.rowcount > 0
+                logger.info(f"Violation update {'successful' if success else 'failed'}")
+            else:
+                success = False
+                logger.warning("No valid fields to update")
 
-        conn.close()
-        self.load_data()  # Reload data
-        return cursor.rowcount > 0
+            conn.close()
+            self.load_data()
+            return success
+        except Exception as e:
+            logger.error(f"Error updating violation: {str(e)}")
+            raise
 
     def delete_violation(self, violation_id):
         """Delete violation"""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+        try:
+            logger.info(f"Deleting violation ID: {violation_id}")
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM violations WHERE id = ?", (violation_id,))
-        conn.commit()
-        conn.close()
+            cursor.execute("DELETE FROM violations WHERE id = ?", (violation_id,))
+            success = cursor.rowcount > 0
+            conn.commit()
+            conn.close()
 
-        self.load_data()  # Reload data
-        return cursor.rowcount > 0
+            self.load_data()
+            logger.info(f"Violation deletion {'successful' if success else 'failed'}")
+            return success
+        except Exception as e:
+            logger.error(f"Error deleting violation: {str(e)}")
+            raise
 
     def add_legal_document(self, document_data):
         """Add new legal document"""
@@ -407,15 +463,19 @@ def webhook():
 @app.route("/chat", methods=["POST"])
 def chat():
     """API endpoint cho direct chat"""
-    data = request.get_json()
+    try:
+        data = request.get_json()
+        if not data or "message" not in data:
+            logger.warning("Invalid request: missing message")
+            return jsonify({"error": "Vui lòng gửi message trong request body"}), 400
 
-    if not data or "message" not in data:
-        return jsonify({"error": "Vui lòng gửi message trong request body"}), 400
-
-    query = data.get("message", "").strip()
-    result = chatbot.generate_response(query)
-
-    return jsonify(result)
+        query = data.get("message", "").strip()
+        logger.info(f"Received chat request: {query}")
+        result = chatbot.generate_response(query)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/test", methods=["GET"])
@@ -448,12 +508,18 @@ def health():
 @app.route("/violations", methods=["POST"])
 def add_violation():
     """Add new violation"""
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
+    try:
+        data = request.get_json()
+        if not data:
+            logger.warning("Invalid request: no data provided")
+            return jsonify({"error": "No data provided"}), 400
 
-    violation_id = chatbot.add_violation(data)
-    return jsonify({"id": violation_id, "message": "Violation added successfully"})
+        logger.info("Adding new violation")
+        violation_id = chatbot.add_violation(data)
+        return jsonify({"id": violation_id, "message": "Violation added successfully"})
+    except Exception as e:
+        logger.error(f"Error adding violation: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/violations/<int:violation_id>", methods=["PUT"])
@@ -513,4 +579,5 @@ def delete_legal_document(doc_id):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting server on port {port}")
     app.run(host="0.0.0.0", port=port, debug=True)
