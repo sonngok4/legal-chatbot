@@ -7,8 +7,12 @@ if not os.path.exists("logs"):
     os.makedirs("logs")
 
 
-# Configure logging
-def setup_logging():
+def setup_logging(name="news_chatbot"):
+    """Setup logging configuration for the application
+
+    Args:
+        name (str): Name of the logger, defaults to 'news_chatbot'
+    """
     # Create formatters
     file_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -36,8 +40,13 @@ def setup_logging():
     console_handler.setFormatter(console_formatter)
 
     # Create logger
-    logger = logging.getLogger("legal_chatbot")
+    logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
+
+    # Remove existing handlers if any
+    logger.handlers = []
+
+    # Add handlers
     logger.addHandler(all_handler)
     logger.addHandler(error_handler)
     logger.addHandler(console_handler)
